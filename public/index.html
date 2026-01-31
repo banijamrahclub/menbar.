@@ -1298,7 +1298,6 @@
 
             useEffect(() => {
                 if (!loading && !user) push('/login');
-                if (window.innerWidth <= 768) push('/dashboard');
             }, [user, loading, push]);
 
             if (loading || !user) return null;
@@ -3063,135 +3062,95 @@
                         throw new Error("فشل في تحميل محرك الصور السحابي. يرجى التأكد من أن اتصال الإنترنت لا يحظر ملفات الجافا سكريبت الخارجية.");
                     }
 
-                    // --- STEP 2: LOAD & PROCESS PSD ---
-                    setAdsStatus("جاري الاتصال بالسحابة وسحب القالب...");
-                    const psdItems = getCloudDirectUrls(tmpl.psd);
-                    let response = null;
-                    let lastError = "";
-                    let successProxy = "";
+                    // --- STEP 1: GET THE TEMPLATE DATA ---
+                    setAdsStatus("جاري تحضير القالب...");
+                    const psdSources = getCloudDirectUrls(tmpl.psd);
+                    let resp = null;
+                    let lastErr = "";
 
-                    for (const item of psdItems) {
+                    for (const source of psdSources) {
                         try {
-                            setAdsStatus(`محاولة تحميل القالب عبر ${item.name}...`);
                             const controller = new AbortController();
-                            const timeoutId = setTimeout(() => controller.abort(), 35000);
-
-                            response = await fetch(item.url, { signal: controller.signal });
-                            clearTimeout(timeoutId);
-
-                            if (response.ok) {
-                                successProxy = item.name;
-                                break;
-                            } else {
-                                lastError = `HTTP ${response.status}`;
-                            }
-                        } catch (e) {
-                            lastError = e.message;
-                        }
+                            const timer = setTimeout(() => controller.abort(), 45000);
+                            resp = await fetch(source.url, { signal: controller.signal });
+                            clearTimeout(timer);
+                            if (resp.ok) break;
+                        } catch (e) { lastErr = e.message; }
                     }
 
-                    if (!response || !response.ok) {
-                        throw new Error(`تعذر تحميل القالب من جميع المصادر. (الخطأ: ${lastError}). تأكد من أن الرابط في Dropbox مفعل للعامة.`);
-                    }
+                    if (!resp || !resp.ok) throw new Error("تعذر جلب القالب. يرجى التأكد من اتصال الإنترنت.");
 
-                    setAdsStatus(`نجح التحميل عبر ${successProxy}! جاري استخراج البيانات...`);
+                    // Load into device memory
+                    const buffer = await resp.arrayBuffer();
+                    setAdsStatus("جاري تحضير المحتويات...");
 
-                    const arrayBuffer = await response.arrayBuffer();
+                    // Get Engine
+                    const engine = window.agPsd || window.AgPsd || (window.agPsdDefault && window.agPsdDefault.default);
+                    if (!engine || !engine.readPsd) throw new Error("المحرك غير جاهز، يرجى إعادة المحاولة.");
 
-                    const getAgPsd = () => {
-                        console.log("Detecting agPsd. Globals available:", {
-                            agPsd: !!window.agPsd,
-                            AgPsd: !!window.AgPsd,
-                            agPsdDefault: !!window.agPsdDefault
-                        });
-                        const lib = window.agPsd || window.AgPsd || window.agPsdDefault;
-                        if (!lib) return null;
-                        if (lib.readPsd) return lib;
-                        if (lib.default && lib.default.readPsd) return lib.default;
-                        return null;
-                    };
+                    // Parse PSD
+                    const psdFile = engine.readPsd(buffer);
 
-                    const psdLib = getAgPsd();
-                    if (!psdLib) throw new Error("لم يتم تحميل محرك الـ PSD بشكل صحيح. يرجى مراجعة اتصال الإنترنت.");
-
-                    const psd = psdLib.readPsd(arrayBuffer);
-
-                    // Optimized Layer Processing (Non-blocking)
-                    const processLayers = async (layers) => {
+                    // Robust Layer Processor
+                    const processLayerData = async (layers) => {
                         for (let layer of layers) {
-                            const name = layer.name ? layer.name.toLowerCase() : '';
+                            const layerName = (layer.name || "").toLowerCase();
 
-                            // Process only if it matches our targets to save energy
+                            // Update Text
                             if (layer.text) {
-                                if (name.includes('اسم') || name.includes('radood') || name.includes('name')) {
-                                    layer.text.text = validSpeakers.join(' & ');
-                                } else if (name.includes('مناسبة') || name.includes('title') || name.includes('event')) {
-                                    layer.text.text = data.eventName;
-                                } else if (name.includes('تاريخ') || name.includes('date')) {
-                                    layer.text.text = data.date;
-                                } else if (name.includes('وقت') || name.includes('time')) {
-                                    layer.text.text = data.time;
-                                } else if (name.includes('يوم') || name.includes('day')) {
-                                    layer.text.text = data.nightOfText || data.day;
-                                } else if (name.includes('موكب') || name.includes('location')) {
-                                    layer.text.text = data.procession || '';
-                                }
+                                if (layerName.includes('اسم') || layerName.includes('radood')) layer.text.text = validSpeakers.join(' & ');
+                                else if (layerName.includes('مناسبة') || layerName.includes('event')) layer.text.text = data.eventName;
+                                else if (layerName.includes('تاريخ') || layerName.includes('date')) layer.text.text = data.date;
+                                else if (layerName.includes('وقت') || layerName.includes('time')) layer.text.text = data.time;
+                                else if (layerName.includes('يوم') || layerName.includes('day')) layer.text.text = data.nightOfText || data.day;
                             }
 
-                            if (name.includes('صورة') || name.includes('photo') || name.includes('person')) {
+                            // Update Images
+                            if (layerName.includes('صورة') || layerName.includes('person') || layerName.includes('شعار')) {
                                 try {
-                                    const cleanBlob = await safeRemoveBG(data.photos[0]);
-                                    const img = await createImageBitmap(cleanBlob);
-                                    const pCanvas = document.createElement('canvas');
-                                    pCanvas.width = layer.width || img.width;
-                                    pCanvas.height = layer.height || img.height;
-                                    pCanvas.getContext('2d').drawImage(img, 0, 0, pCanvas.width, pCanvas.height);
-                                    layer.canvas = pCanvas;
-                                    img.close(); // Immediate memory release
-                                } catch (e) { console.warn("Photo placement skipped", e); }
-                            }
-
-                            if (name.includes('شعار') || name.includes('logo')) {
-                                try {
-                                    const img = await createImageBitmap(data.logo);
-                                    const pCanvas = document.createElement('canvas');
-                                    pCanvas.width = layer.width || 200;
-                                    pCanvas.height = (img.height / img.width) * pCanvas.width;
-                                    pCanvas.getContext('2d').drawImage(img, 0, 0, pCanvas.width, pCanvas.height);
-                                    layer.canvas = pCanvas;
-                                    img.close();
+                                    const rawImage = layerName.includes('شعار') ? data.logo : data.photos[0];
+                                    if (rawImage) {
+                                        const blob = layerName.includes('شعار') ? rawImage : await safeRemoveBG(rawImage);
+                                        const bitmap = await createImageBitmap(blob);
+                                        const canvas = document.createElement('canvas');
+                                        canvas.width = layer.width || bitmap.width;
+                                        canvas.height = layer.height || bitmap.height;
+                                        canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+                                        layer.canvas = canvas;
+                                        bitmap.close();
+                                    }
                                 } catch (e) { }
                             }
 
-                            // Allow UI thread to breathe every few layers
-                            if (layers.indexOf(layer) % 5 === 0) {
-                                await new Promise(r => setTimeout(r, 0));
+                            if (layer.children) {
+                                await new Promise(r => setTimeout(r, 5));
+                                await processLayerData(layer.children);
                             }
-
-                            if (layer.children) await processLayers(layer.children);
                         }
                     };
 
-                    await processLayers(psd.children);
+                    await processLayerData(psdFile.children);
 
-                    // --- STEP 3: RENDER FINAL ---
-                    setAdsStatus("جاري تجميع الطبقات وتصدير الإعلان...");
-                    const finalCanvas = document.createElement('canvas');
-                    finalCanvas.width = psd.width;
-                    finalCanvas.height = psd.height;
+                    // Final Render
+                    setAdsStatus("جاري إنتاج النسخة النهائية...");
+                    const outputCanvas = document.createElement('canvas');
+                    outputCanvas.width = psdFile.width;
+                    outputCanvas.height = psdFile.height;
+                    engine.drawPsd(outputCanvas, psdFile);
 
-                    const drawLib = getAgPsd();
-                    if (drawLib && drawLib.drawPsd) {
-                        drawLib.drawPsd(finalCanvas, psd);
-                    } else {
-                        throw new Error("فشل محرك الرسم في معالجة الطبقات النهائية.");
-                    }
-
-                    const finalUrl = finalCanvas.toDataURL('image/jpeg', 0.95);
-                    setResult(finalUrl);
+                    const resultUrl = outputCanvas.toDataURL('image/jpeg', 0.92);
+                    setResult(resultUrl);
                     setStatus('result');
                     setGenerating(false);
-                    addHistoryItem({ id: Date.now(), type: 'image', name: `إعلان (PSD): ${data.eventName}`, url: finalUrl, date: new Date().toLocaleDateString('en-GB'), status: 'completed' });
+
+                    addHistoryItem({
+                        id: Date.now(),
+                        type: 'image',
+                        name: `إعلان: ${data.eventName}`,
+                        url: resultUrl,
+                        date: new Date().toLocaleDateString('en-GB'),
+                        status: 'completed'
+                    });
 
                 } catch (e) {
                     console.error("PSD Engine Error:", e);

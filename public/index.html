@@ -320,11 +320,10 @@
 
         document.body.style.background = '#111';
 
-        // --- Configuration for Deployment ---
-        // Change this to your production backend URL (e.g., https://menbar-api.onrender.com)
-        const BASE_API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        // --- Smart API Detection for Render/Local ---
+        const BASE_API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
             ? 'http://localhost:8000'
-            : 'https://menjaw.onrender.com'; // Your Render backend URL
+            : window.location.origin; // Dynamically use the Render service URL
 
         // --- Global Error Handler ---
         window.onerror = function (msg, url, line, col, error) {
@@ -3020,9 +3019,10 @@
                         if (getLib() && getLib().readPsd) return true;
 
                         const sources = [
+                            `${BASE_API_URL}/proxy-cloud?url=ag-psd.js`, // 1. Backend Local Cache (Fastest on Render)
+                            'ag-psd.js', // 2. Direct relative path
                             'https://cdn.jsdelivr.net/npm/ag-psd@2.1.25/dist/bundle.js',
-                            'https://unpkg.com/ag-psd@2.1.25/dist/bundle.js',
-                            `${BASE_API_URL}/proxy-cloud?url=https://cdn.jsdelivr.net/npm/ag-psd@2.1.25/dist/bundle.js`
+                            'https://unpkg.com/ag-psd@2.1.25/dist/bundle.js'
                         ];
 
                         for (let url of sources) {

@@ -2998,12 +2998,34 @@
 
                     if (data.type === 'custom' && data.customProto) {
                         isCustom = true;
-                        protoSource = await new Promise((res) => {
-                            const reader = new FileReader();
-                            reader.onload = () => res(reader.result);
-                            reader.readAsDataURL(data.customProto);
-                        });
-                        setAdsStatus("تم تحميل نموذجك المخصص بنجاح...");
+                        // Helper to resize image to prevent "Payload Too Large"
+                        const resizeImage = (file, maxWidth = 800) => {
+                            return new Promise((res) => {
+                                const reader = new FileReader();
+                                reader.onload = (e) => {
+                                    const img = new Image();
+                                    img.onload = () => {
+                                        const canvas = document.createElement('canvas');
+                                        let width = img.width;
+                                        let height = img.height;
+                                        if (width > maxWidth) {
+                                            height *= maxWidth / width;
+                                            width = maxWidth;
+                                        }
+                                        canvas.width = width;
+                                        canvas.height = height;
+                                        const ctx = canvas.getContext('2d');
+                                        ctx.drawImage(img, 0, 0, width, height);
+                                        res(canvas.toDataURL('image/jpeg', 0.8));
+                                    };
+                                    img.src = e.target.result;
+                                };
+                                reader.readAsDataURL(file);
+                            });
+                        };
+
+                        protoSource = await resizeImage(data.customProto);
+                        setAdsStatus("تم تحسين حجم نموذجك المخصص وجاري الإرسال...");
                     } else {
                         const currentPool = prototypes[data.type] || prototypes.aza;
                         const randomProto = currentPool[Math.floor(Math.random() * currentPool.length)];

@@ -3041,6 +3041,12 @@
                         body: formData
                     });
 
+                    if (!response.ok) {
+                        const errText = await response.text();
+                        console.error("Backend Error:", errText);
+                        throw new Error("السيرفر مشغول أو حجم الملف كبير جداً.");
+                    }
+
                     const job = await response.json();
                     if (!job.job_id) throw new Error("فشل محرك التوليد في الاستجابة.");
 
@@ -3100,26 +3106,30 @@
                     {status === 'category' && (
                         <div style={{ textAlign: 'center', padding: '40px 0' }}>
                             <h2 style={{ marginBottom: '40px' }}>ما هو نوع المناسبة؟</h2>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '25px' }}>
-                                <div className="card" onClick={() => { setData({ ...data, type: 'mowalid' }); setStatus('form'); }} style={{ padding: '40px', cursor: 'pointer', border: '2px solid transparent', transition: '0.3s' }} onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--success)'} onMouseLeave={e => e.currentTarget.style.borderColor = 'transparent'}>
-                                    <div style={{ fontSize: '4rem', marginBottom: '20px' }}>✨</div>
-                                    <h3 style={{ color: 'var(--success)' }}>مولد / أفراح</h3>
-                                    <p style={{ color: 'var(--text-secondary)' }}>ألوان زاهية، ورود، إضاءات مبهجة</p>
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                                gap: '20px'
+                            }}>
+                                <div className="card" onClick={() => { setData({ ...data, type: 'mowalid' }); setStatus('form'); }} style={{ padding: '30px 15px', cursor: 'pointer', border: '2px solid transparent', transition: '0.3s' }} onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--success)'} onMouseLeave={e => e.currentTarget.style.borderColor = 'transparent'}>
+                                    <div style={{ fontSize: '3rem', marginBottom: '15px' }}>✨</div>
+                                    <h3 style={{ color: 'var(--success)', fontSize: '1.2rem' }}>مواليد / أفراح</h3>
+                                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>ألوان زاهية مبهجة</p>
                                 </div>
-                                <div className="card" onClick={() => { setData({ ...data, type: 'wafayat' }); setStatus('form'); }} style={{ padding: '40px', cursor: 'pointer', border: '2px solid transparent', transition: '0.3s' }} onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--error)'} onMouseLeave={e => e.currentTarget.style.borderColor = 'transparent'}>
-                                    <div style={{ fontSize: '4rem', marginBottom: '20px' }}>🕯️</div>
-                                    <h3 style={{ color: 'var(--error)' }}>وفاة / أحزان</h3>
-                                    <p style={{ color: 'var(--text-secondary)' }}>أجواء حزينة، شموع، خطوط كلاسيكية</p>
+                                <div className="card" onClick={() => { setData({ ...data, type: 'wafayat' }); setStatus('form'); }} style={{ padding: '30px 15px', cursor: 'pointer', border: '2px solid transparent', transition: '0.3s' }} onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--error)'} onMouseLeave={e => e.currentTarget.style.borderColor = 'transparent'}>
+                                    <div style={{ fontSize: '3rem', marginBottom: '15px' }}>🕯️</div>
+                                    <h3 style={{ color: 'var(--error)', fontSize: '1.2rem' }}>وفاة / أحزان</h3>
+                                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>شموع وخطوط حزينة</p>
                                 </div>
-                                <div className="card" onClick={() => { setData({ ...data, type: 'aza' }); setStatus('form'); }} style={{ padding: '40px', cursor: 'pointer', border: '2px solid transparent', transition: '0.3s' }} onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--primary)'} onMouseLeave={e => e.currentTarget.style.borderColor = 'transparent'}>
-                                    <div style={{ fontSize: '4rem', marginBottom: '20px' }}>🏴</div>
-                                    <h3 style={{ color: 'var(--primary)' }}>عزاء / مواكب</h3>
-                                    <p style={{ color: 'var(--text-secondary)' }}>تركيز على الرادود، تفاصيل الموكب والوقت</p>
+                                <div className="card" onClick={() => { setData({ ...data, type: 'aza' }); setStatus('form'); }} style={{ padding: '30px 15px', cursor: 'pointer', border: '2px solid transparent', transition: '0.3s' }} onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--primary)'} onMouseLeave={e => e.currentTarget.style.borderColor = 'transparent'}>
+                                    <div style={{ fontSize: '3rem', marginBottom: '15px' }}>🏴</div>
+                                    <h3 style={{ color: 'var(--primary)', fontSize: '1.2rem' }}>عزاء / مواكب</h3>
+                                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>تركيز على الرادود</p>
                                 </div>
-                                <div className="card" onClick={() => document.getElementById('custom-ref-upload').click()} style={{ padding: '40px', cursor: 'pointer', border: '2px dashed var(--primary)', transition: '0.3s' }}>
-                                    <div style={{ fontSize: '4rem', marginBottom: '20px' }}>🖼️</div>
-                                    <h3 style={{ color: 'var(--primary)' }}>نموذجك الخاص</h3>
-                                    <p style={{ color: 'var(--text-secondary)' }}>ارفع صورة وسيقوم المحرك بتقليد تصميمها</p>
+                                <div className="card" onClick={() => document.getElementById('custom-ref-upload').click()} style={{ padding: '30px 15px', cursor: 'pointer', border: '2px dashed var(--primary)', transition: '0.3s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(0, 74, 173, 0.05)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                                    <div style={{ fontSize: '3rem', marginBottom: '15px' }}>🖼️</div>
+                                    <h3 style={{ color: 'var(--primary)', fontSize: '1.2rem' }}>نموذجك الخاص</h3>
+                                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>ارفع تصميمك لتقليده</p>
                                     <input type="file" id="custom-ref-upload" hidden accept="image/*" onChange={(e) => {
                                         if (e.target.files[0]) {
                                             setData({ ...data, type: 'custom', customProto: e.target.files[0] });

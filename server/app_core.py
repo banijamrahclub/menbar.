@@ -40,12 +40,17 @@ print("MENBAR Cloud Engine is active (Free Tier)...")
 def download_lib():
     lib_path = BASE_DIR.parent / "public" / "ag-psd.js"
     if not lib_path.exists():
-        print("Downloading ag-psd library locally...")
+        print(f"Downloading ag-psd library locally to {lib_path}...")
         try:
-            r = requests.get("https://cdn.jsdelivr.net/npm/ag-psd@2.1.25/dist/bundle.js", timeout=30)
-            with open(lib_path, "wb") as f:
-                f.write(r.content)
-            print("ag-psd library saved locally.")
+            # Ensure public dir exists
+            lib_path.parent.mkdir(parents=True, exist_ok=True)
+            r = requests.get("https://cdn.jsdelivr.net/npm/ag-psd@2.1.25/dist/bundle.js", timeout=60)
+            if r.ok:
+                with open(lib_path, "wb") as f:
+                    f.write(r.content)
+                print("ag-psd library saved locally.")
+            else:
+                print(f"Failed to download library: HTTP {r.status_code}")
         except Exception as e:
             print(f"Failed to download library: {e}")
 

@@ -3016,43 +3016,37 @@
 
                     // --- STEP 0: FORCE LOAD LIBRARY ---
                     const forceLoadAgPsd = async () => {
-                        if (window.agPsd && window.agPsd.readPsd) return true;
+                        const getLib = () => window.agPsd || window.AgPsd || (window.agPsdDefault && window.agPsdDefault.default) || (window.agPsdDefault && window.agPsdDefault);
+                        if (getLib() && getLib().readPsd) return true;
 
-                        setAdsStatus("جاري تحفيز محرك الصور من خادم مِـنـبَـر...");
-                        const scriptUrl = 'https://cdn.jsdelivr.net/npm/ag-psd@2.1.25/dist/bundle.js';
                         const sources = [
-                            { name: 'خادم مِـنـبَـر الرئيسي', url: `${BASE_API_URL}/proxy-cloud?url=ag-psd.js`, type: 'script' },
-                            { name: 'الخادم السحابي الاحتياطي', url: scriptUrl, type: 'script' }
+                            'https://cdn.jsdelivr.net/npm/ag-psd@2.1.25/dist/bundle.js',
+                            'https://unpkg.com/ag-psd@2.1.25/dist/bundle.js',
+                            `${BASE_API_URL}/proxy-cloud?url=https://cdn.jsdelivr.net/npm/ag-psd@2.1.25/dist/bundle.js`
                         ];
 
-                        for (let src of sources) {
+                        for (let url of sources) {
                             try {
-                                setAdsStatus(`محاولة تحميل المحرك عبر ${src.name}...`);
-                                if (src.type === 'script') {
-                                    await new Promise((res, rej) => {
-                                        const s = document.createElement('script');
-                                        s.src = src.url;
-                                        s.onload = res;
-                                        s.onerror = rej;
-                                        document.head.appendChild(s);
-                                        setTimeout(() => rej(new Error("Timeout")), 10000);
-                                    });
-                                } else {
-                                    const resp = await fetch(src.url);
-                                    if (!resp.ok) throw new Error("Proxy error");
-                                    const code = await resp.text();
-                                    const script = document.createElement('script');
-                                    script.text = code;
-                                    document.head.appendChild(script);
-                                }
+                                console.log("Attempting to load PSD Engine from:", url);
+                                await new Promise((res, rej) => {
+                                    const s = document.createElement('script');
+                                    s.src = url;
+                                    s.async = true;
+                                    s.onload = res;
+                                    s.onerror = rej;
+                                    document.head.appendChild(s);
+                                    setTimeout(() => rej(new Error("Timeout")), 20000);
+                                });
 
-                                // Reconcile global
-                                const lib = window.agPsd || window.AgPsd || (window.agPsdDefault && window.agPsdDefault.default);
-                                if (lib) {
-                                    window.agPsd = lib.readPsd ? lib : (lib.default || lib);
-                                    if (window.agPsd.readPsd) return true;
+                                const lib = getLib();
+                                if (lib && lib.readPsd) {
+                                    window.agPsd = lib;
+                                    console.log("PSD Engine loaded successfully.");
+                                    return true;
                                 }
-                            } catch (e) { console.warn(`Failed to load script from ${src.name}:`, e); }
+                            } catch (e) {
+                                console.warn("Load failed for:", url, e);
+                            }
                         }
                         return false;
                     };

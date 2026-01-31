@@ -36,6 +36,21 @@ for d in (UPLOADS_DIR, OUTPUTS_DIR, JOBS_DIR):
 # Everything is Cloud-based now. No local models to load.
 print("MENBAR Cloud Engine is active (Free Tier)...")
 
+# --- Auto-Download ag-psd library to avoid CDN blocks ---
+def download_lib():
+    lib_path = BASE_DIR.parent / "public" / "ag-psd.js"
+    if not lib_path.exists():
+        print("Downloading ag-psd library locally...")
+        try:
+            r = requests.get("https://cdn.jsdelivr.net/npm/ag-psd@2.1.25/dist/bundle.js", timeout=30)
+            with open(lib_path, "wb") as f:
+                f.write(r.content)
+            print("ag-psd library saved locally.")
+        except Exception as e:
+            print(f"Failed to download library: {e}")
+
+download_lib()
+
 # =========================
 # 2. Simple Internal Task Manager (Free Tier Friendly)
 # =========================
@@ -274,23 +289,33 @@ async def get_status(job_id: str):
 @app.get("/proxy-cloud")
 async def proxy_cloud(url: str):
     try:
+        # If the request is for the library itself and we have it locally, serve it
+        if "ag-psd" in url:
+            lib_path = BASE_DIR.parent / "public" / "ag-psd.js"
+            if lib_path.exists():
+                async def iter_file():
+                    async with aiofiles.open(lib_path, "rb") as f:
+                        while chunk := await f.read(1024*1024):
+                            yield chunk
+                return StreamingResponse(iter_file(), media_type="application/javascript")
+
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Accept": "*/*",
-            "Referer": "https://www.dropbox.com/"
         }
-        # Force dl=1 for dropbox
         if "dropbox.com" in url:
             url = url.replace("dl=0", "dl=1").replace("www.dropbox.com", "dl.dropboxusercontent.com")
             
-        session = requests.Session()
-        resp = session.get(url, stream=True, timeout=60, headers=headers)
+        resp = requests.get(url, stream=True, timeout=120, headers=headers)
         resp.raise_for_status()
         
         return StreamingResponse(
             resp.iter_content(chunk_size=1024*1024),
             media_type=resp.headers.get("Content-Type", "application/octet-stream"),
-            headers={"Access-Control-Allow-Origin": "*"}
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Cache-Control": "no-cache"
+            }
         )
     except Exception as e:
         print(f"Proxy Critical Error: {str(e)}")

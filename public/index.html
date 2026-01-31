@@ -3019,12 +3019,11 @@
                     const forceLoadAgPsd = async () => {
                         if (window.agPsd && window.agPsd.readPsd) return true;
 
-                        setAdsStatus("جاري تحفيز محرك الصور... (هذا يحدث مرة واحدة)");
+                        setAdsStatus("جاري تحفيز محرك الصور من خادم مِـنـبَـر...");
                         const scriptUrl = 'https://cdn.jsdelivr.net/npm/ag-psd@2.1.25/dist/bundle.js';
                         const sources = [
-                            { name: 'الخادم السريع 1', url: scriptUrl, type: 'script' },
-                            { name: 'الخادم السريع 2', url: 'https://unpkg.com/ag-psd@2.1.25/dist/bundle.js', type: 'script' },
-                            { name: 'خادم مِـنـبَـر الاحتياطي', url: `${BASE_API_URL}/proxy-cloud?url=${encodeURIComponent(scriptUrl)}`, type: 'fetch' }
+                            { name: 'خادم مِـنـبَـر الرئيسي', url: `${BASE_API_URL}/proxy-cloud?url=ag-psd.js`, type: 'script' },
+                            { name: 'الخادم السحابي الاحتياطي', url: scriptUrl, type: 'script' }
                         ];
 
                         for (let src of sources) {

@@ -3116,11 +3116,12 @@
 
                     const psd = psdLib.readPsd(arrayBuffer);
 
+                    // Optimized Layer Processing (Non-blocking)
                     const processLayers = async (layers) => {
                         for (let layer of layers) {
-                            const name = layer.name.toLowerCase();
+                            const name = layer.name ? layer.name.toLowerCase() : '';
 
-                            // 1. Text Logic
+                            // Process only if it matches our targets to save energy
                             if (layer.text) {
                                 if (name.includes('اسم') || name.includes('radood') || name.includes('name')) {
                                     layer.text.text = validSpeakers.join(' & ');
@@ -3137,50 +3138,34 @@
                                 }
                             }
 
-                            // 2. Portrait Logic
-                            if (name.includes('صورة') || name.includes('photo') || name.includes('image') || name.includes('person')) {
+                            if (name.includes('صورة') || name.includes('photo') || name.includes('person')) {
                                 try {
                                     const cleanBlob = await safeRemoveBG(data.photos[0]);
-                                    const img = new Image();
-                                    img.src = URL.createObjectURL(cleanBlob);
-                                    await new Promise(r => img.onload = r);
+                                    const img = await createImageBitmap(cleanBlob);
                                     const pCanvas = document.createElement('canvas');
                                     pCanvas.width = layer.width || img.width;
                                     pCanvas.height = layer.height || img.height;
                                     pCanvas.getContext('2d').drawImage(img, 0, 0, pCanvas.width, pCanvas.height);
                                     layer.canvas = pCanvas;
-                                } catch (e) { }
+                                    img.close(); // Immediate memory release
+                                } catch (e) { console.warn("Photo placement skipped", e); }
                             }
 
-                            // 3. Logo Logic
                             if (name.includes('شعار') || name.includes('logo')) {
                                 try {
-                                    const img = new Image();
-                                    img.src = URL.createObjectURL(data.logo);
-                                    await new Promise(r => img.onload = r);
+                                    const img = await createImageBitmap(data.logo);
                                     const pCanvas = document.createElement('canvas');
                                     pCanvas.width = layer.width || 200;
                                     pCanvas.height = (img.height / img.width) * pCanvas.width;
                                     pCanvas.getContext('2d').drawImage(img, 0, 0, pCanvas.width, pCanvas.height);
                                     layer.canvas = pCanvas;
+                                    img.close();
                                 } catch (e) { }
                             }
 
-                            // 4. BACKGROUND REPLACEMENT (Optional if user wanted fresh BG)
-                            if (name.includes('خلفية') || name.includes('bg') || name.includes('background')) {
-                                if (data.userPrompt) {
-                                    setAdsStatus("تخصيص الخلفية حسب طلبك...");
-                                    const prompt = `Premium religious poster background, ${data.userPrompt}, no text, no people, 8k`;
-                                    const bgUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1080&height=1440&nologo=true`;
-                                    const img = new Image();
-                                    img.crossOrigin = "anonymous";
-                                    img.src = bgUrl;
-                                    await new Promise(r => img.onload = r);
-                                    const pCanvas = document.createElement('canvas');
-                                    pCanvas.width = 1080; pCanvas.height = 1440;
-                                    pCanvas.getContext('2d').drawImage(img, 0, 0, 1080, 1440);
-                                    layer.canvas = pCanvas;
-                                }
+                            // Allow UI thread to breathe every few layers
+                            if (layers.indexOf(layer) % 5 === 0) {
+                                await new Promise(r => setTimeout(r, 0));
                             }
 
                             if (layer.children) await processLayers(layer.children);

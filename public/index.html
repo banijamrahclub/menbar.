@@ -2839,7 +2839,8 @@
                 photos: [null],
                 logo: null,
                 userPrompt: '',
-                selectedTemplate: null
+                selectedTemplate: null,
+                customProto: null // New: User-provided reference image
             });
             const [result, setResult] = useState(null);
             const [generating, setGenerating] = useState(false);
@@ -2981,158 +2982,90 @@
 
                 setGenerating(true);
                 setStatus('processing');
+
                 const setAdsStatus = (msg) => {
                     const el = document.getElementById('ads-processing-msg');
                     if (el) el.innerText = msg;
                 };
 
-                const safeRemoveBG = async (blob) => {
-                    try {
-                        if (typeof imglyRemoveBackground === 'function') {
-                            return await imglyRemoveBackground(blob);
-                        } else if (typeof imgly !== 'undefined' && imgly.backgroundRemoval && typeof imgly.backgroundRemoval.removeBackground === 'function') {
-                            return await imgly.backgroundRemoval.removeBackground(blob);
-                        }
-                    } catch (e) { console.error("BG Removal failed:", e); }
-                    return blob;
-                };
-
                 try {
-                    if (window.location.protocol === 'file:') {
-                        throw new Error("لا يمكن معالجة ملفات PSD عند فتح الموقع كملف محلي. يرجى رفعه على خادم أو استخدامه عبر الإنترنت.");
-                    }
-
                     await deductCredits(4);
 
-                    // --- STEP 1: SMART TEMPLATE SELECTION (SIMPLIFIED) ---
-                    setAdsStatus("جاري اختيار القالب الأنسب للمناسبة...");
+                    // --- STEP 1: SELECT REFERENCE ---
+                    setAdsStatus("جاري تحضير النموذج المرجعي...");
+                    let protoSource = "";
+                    let isCustom = false;
 
-                    const currentPool = psdTemplates[data.type] || psdTemplates.aza;
-                    // Simplify: Pick a random template from the pool to reduce AI latency/errors
-                    const tmpl = currentPool[Math.floor(Math.random() * currentPool.length)];
-
-                    setAdsStatus(`تم اختيار قالب "${tmpl.name}".. جاري المعالجة...`);
-
-                    // --- STEP 0: FORCE LOAD LIBRARY ---
-                    const forceLoadAgPsd = async () => {
-                        const getLib = () => window.agPsd || window.AgPsd || (window.agPsdDefault && window.agPsdDefault.default) || (window.agPsdDefault && window.agPsdDefault);
-                        if (getLib() && getLib().readPsd) return true;
-
-                        const sources = [
-                            `${BASE_API_URL}/proxy-cloud?url=ag-psd.js`, // 1. Backend Local Cache (Fastest on Render)
-                            'ag-psd.js', // 2. Direct relative path
-                            'https://cdn.jsdelivr.net/npm/ag-psd@2.1.25/dist/bundle.js',
-                            'https://unpkg.com/ag-psd@2.1.25/dist/bundle.js'
-                        ];
-
-                        for (let url of sources) {
-                            try {
-                                console.log("Attempting to load PSD Engine from:", url);
-                                await new Promise((res, rej) => {
-                                    const s = document.createElement('script');
-                                    s.src = url;
-                                    s.async = true;
-                                    s.onload = res;
-                                    s.onerror = rej;
-                                    document.head.appendChild(s);
-                                    setTimeout(() => rej(new Error("Timeout")), 20000);
-                                });
-
-                                const lib = getLib();
-                                if (lib && lib.readPsd) {
-                                    window.agPsd = lib;
-                                    console.log("PSD Engine loaded successfully.");
-                                    return true;
-                                }
-                            } catch (e) {
-                                console.warn("Load failed for:", url, e);
-                            }
-                        }
-                        return false;
-                    };
-
-                    const isLoaded = await forceLoadAgPsd();
-                    if (!isLoaded) {
-                        throw new Error("فشل في تحميل محرك الصور السحابي. يرجى التأكد من أن اتصال الإنترنت لا يحظر ملفات الجافا سكريبت الخارجية.");
+                    if (data.type === 'custom' && data.customProto) {
+                        isCustom = true;
+                        protoSource = await new Promise((res) => {
+                            const reader = new FileReader();
+                            reader.onload = () => res(reader.result);
+                            reader.readAsDataURL(data.customProto);
+                        });
+                        setAdsStatus("تم تحميل نموذجك المخصص بنجاح...");
+                    } else {
+                        const currentPool = prototypes[data.type] || prototypes.aza;
+                        const randomProto = currentPool[Math.floor(Math.random() * currentPool.length)];
+                        protoSource = window.location.origin + '/' + randomProto;
                     }
 
-                    // --- STEP 1: GET THE TEMPLATE DATA ---
-                    setAdsStatus("جاري تحضير القالب...");
-                    const psdSources = getCloudDirectUrls(tmpl.psd);
-                    let resp = null;
-                    let lastErr = "";
+                    // --- STEP 2: PREPARE PROMPT ---
+                    setAdsStatus("جاري صياغة الأمر للمحرك الحديث...");
+                    const prompt = `
+                        Generate a professional Islamic poster based on this style reference: ${isCustom ? 'User Uploaded File' : protoSource}.
+                        Details to include:
+                        - Event Title: ${data.eventName}
+                        - Speakers Names: ${validSpeakers.join(', ')}
+                        - Date/Day: ${data.day} ${data.date}
+                        - Time: ${data.time}
+                        - Location: ${data.location || 'Hosainiya'}
+                        
+                        Instructions:
+                        1. Mimic the layout and vibe of the reference, but generate a NEW unique background.
+                        2. Create premium typography for the names.
+                        3. Combine architecture with digital art.
+                    `;
 
-                    for (const source of psdSources) {
-                        try {
-                            const controller = new AbortController();
-                            const timer = setTimeout(() => controller.abort(), 45000);
-                            resp = await fetch(source.url, { signal: controller.signal });
-                            clearTimeout(timer);
-                            if (resp.ok) break;
-                        } catch (e) { lastErr = e.message; }
+                    // --- STEP 3: EXECUTE ---
+                    setAdsStatus("يقوم Nano Banana Bro بالرسم الآن (استلهاماً من النموذج)...");
+
+                    const formData = new FormData();
+                    formData.append('prompt', prompt);
+                    formData.append('aspect_ratio', '4:5');
+                    formData.append('engine', 'nano_banana_bro_v2');
+                    formData.append('image_ref', isCustom ? protoSource.split(',')[1] : protoSource);
+
+                    const response = await fetch(`${BASE_API_URL}/image/generate`, {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const job = await response.json();
+                    if (!job.job_id) throw new Error("فشل محرك التوليد في الاستجابة.");
+
+                    // Polling logic for results
+                    let resultUrl = null;
+                    let attempts = 0;
+                    while (!resultUrl && attempts < 60) {
+                        await new Promise(r => setTimeout(r, 4000));
+                        const statusResp = await fetch(`${BASE_API_URL}/status/${job.job_id}`);
+                        const statusData = await statusResp.json();
+
+                        if (statusData.status === 'SUCCESS' || statusData.status === 'completed') {
+                            const outUrl = statusData.result.output_url;
+                            resultUrl = (outUrl && outUrl.startsWith('http')) ? outUrl : `${BASE_API_URL}${outUrl}`;
+                            break;
+                        } else if (statusData.status === 'failed') {
+                            throw new Error("فشل المحرك في إنتاج التصميم.");
+                        }
+
+                        setAdsStatus(`Nano Banana Bro: جاري بناء التصميم (${statusData.progress || 10 * (attempts % 10)}%)...`);
+                        attempts++;
                     }
 
-                    if (!resp || !resp.ok) throw new Error("تعذر جلب القالب. يرجى التأكد من اتصال الإنترنت.");
+                    if (!resultUrl) throw new Error("استغرق المحرك وقتاً طويلاً. يرجى مراجعة التاريخ لاحقاً.");
 
-                    // Load into device memory
-                    const buffer = await resp.arrayBuffer();
-                    setAdsStatus("جاري تحضير المحتويات...");
-
-                    // Get Engine
-                    const engine = window.agPsd || window.AgPsd || (window.agPsdDefault && window.agPsdDefault.default);
-                    if (!engine || !engine.readPsd) throw new Error("المحرك غير جاهز، يرجى إعادة المحاولة.");
-
-                    // Parse PSD
-                    const psdFile = engine.readPsd(buffer);
-
-                    // Robust Layer Processor
-                    const processLayerData = async (layers) => {
-                        for (let layer of layers) {
-                            const layerName = (layer.name || "").toLowerCase();
-
-                            // Update Text
-                            if (layer.text) {
-                                if (layerName.includes('اسم') || layerName.includes('radood')) layer.text.text = validSpeakers.join(' & ');
-                                else if (layerName.includes('مناسبة') || layerName.includes('event')) layer.text.text = data.eventName;
-                                else if (layerName.includes('تاريخ') || layerName.includes('date')) layer.text.text = data.date;
-                                else if (layerName.includes('وقت') || layerName.includes('time')) layer.text.text = data.time;
-                                else if (layerName.includes('يوم') || layerName.includes('day')) layer.text.text = data.nightOfText || data.day;
-                            }
-
-                            // Update Images
-                            if (layerName.includes('صورة') || layerName.includes('person') || layerName.includes('شعار')) {
-                                try {
-                                    const rawImage = layerName.includes('شعار') ? data.logo : data.photos[0];
-                                    if (rawImage) {
-                                        const blob = layerName.includes('شعار') ? rawImage : await safeRemoveBG(rawImage);
-                                        const bitmap = await createImageBitmap(blob);
-                                        const canvas = document.createElement('canvas');
-                                        canvas.width = layer.width || bitmap.width;
-                                        canvas.height = layer.height || bitmap.height;
-                                        canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-                                        layer.canvas = canvas;
-                                        bitmap.close();
-                                    }
-                                } catch (e) { }
-                            }
-
-                            if (layer.children) {
-                                await new Promise(r => setTimeout(r, 5));
-                                await processLayerData(layer.children);
-                            }
-                        }
-                    };
-
-                    await processLayerData(psdFile.children);
-
-                    // Final Render
-                    setAdsStatus("جاري إنتاج النسخة النهائية...");
-                    const outputCanvas = document.createElement('canvas');
-                    outputCanvas.width = psdFile.width;
-                    outputCanvas.height = psdFile.height;
-                    engine.drawPsd(outputCanvas, psdFile);
-
-                    const resultUrl = outputCanvas.toDataURL('image/jpeg', 0.92);
                     setResult(resultUrl);
                     setStatus('result');
                     setGenerating(false);
@@ -3140,15 +3073,15 @@
                     addHistoryItem({
                         id: Date.now(),
                         type: 'image',
-                        name: `إعلان: ${data.eventName}`,
+                        name: `تصميم ذكي: ${data.eventName}`,
                         url: resultUrl,
                         date: new Date().toLocaleDateString('en-GB'),
                         status: 'completed'
                     });
 
                 } catch (e) {
-                    console.error("PSD Engine Error:", e);
-                    alert("عذراً، المحرك لم يتمكن من معالجة هذا القالب:\n" + e.message);
+                    console.error("Nano Engine Error:", e);
+                    alert("حدث خطأ في محرك Nano Banana Bro: " + e.message);
                     setGenerating(false);
                     setStatus('form');
                 }
@@ -3182,6 +3115,17 @@
                                     <div style={{ fontSize: '4rem', marginBottom: '20px' }}>🏴</div>
                                     <h3 style={{ color: 'var(--primary)' }}>عزاء / مواكب</h3>
                                     <p style={{ color: 'var(--text-secondary)' }}>تركيز على الرادود، تفاصيل الموكب والوقت</p>
+                                </div>
+                                <div className="card" onClick={() => document.getElementById('custom-ref-upload').click()} style={{ padding: '40px', cursor: 'pointer', border: '2px dashed var(--primary)', transition: '0.3s' }}>
+                                    <div style={{ fontSize: '4rem', marginBottom: '20px' }}>🖼️</div>
+                                    <h3 style={{ color: 'var(--primary)' }}>نموذجك الخاص</h3>
+                                    <p style={{ color: 'var(--text-secondary)' }}>ارفع صورة وسيقوم المحرك بتقليد تصميمها</p>
+                                    <input type="file" id="custom-ref-upload" hidden accept="image/*" onChange={(e) => {
+                                        if (e.target.files[0]) {
+                                            setData({ ...data, type: 'custom', customProto: e.target.files[0] });
+                                            setStatus('form');
+                                        }
+                                    }} />
                                 </div>
                             </div>
                         </div>

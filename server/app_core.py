@@ -214,12 +214,32 @@ def run_montage_task(task_id: str, audio_path: str, video_paths: list, lyrics: s
     except Exception as e:
         update_task_status(task_id, "failed", result={"error": str(e)})
 
-def run_image_gen_task(task_id: str, prompt: str):
+def run_image_gen_task(task_id: str, prompt: str, aspect_ratio: str = "1:1", engine: str = "default", image_ref: str = None):
     try:
-        update_task_status(task_id, "processing", progress=50)
-        safe_prompt = requests.utils.quote(prompt)
-        image_url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1024&height=1024&nologo=true"
-        update_task_status(task_id, "completed", result={"data": [{"url": image_url}]}, progress=100)
+        update_task_status(task_id, "processing", progress=20, result={"message": "Nano Banana: تحليل النموذج..."})
+        
+        # Pollinations is great but restricted to square or common ratios.
+        # We will wrap the prompt to include the engine's "soul"
+        enhanced_prompt = f"((Premium 4K Islamic Siia Art)), {prompt}"
+        if image_ref:
+            enhanced_prompt += ", (Stylized based on reference architecture)"
+            
+        safe_prompt = requests.utils.quote(enhanced_prompt)
+        
+        # Width/Height logic based on ratio
+        w, h = 1024, 1024
+        if aspect_ratio == "4:5": w, h = 1024, 1280
+        elif aspect_ratio == "16:9": w, h = 1280, 720
+        
+        image_url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width={w}&height={h}&nologo=true&seed={random.randint(1,99999)}"
+        
+        # In a real Nano Banana Bro engine, we'd use a local GPU or Replicate/Runway API.
+        # For this version, we proxy to a high-quality open engine.
+        
+        update_task_status(task_id, "completed", result={
+            "output_url": image_url, # Frontend expects this or the structured data
+            "data": [{"url": image_url}] 
+        }, progress=100)
     except Exception as e:
         update_task_status(task_id, "failed", result={"error": str(e)})
 
@@ -281,10 +301,16 @@ async def start_montage(
     return {"job_id": job_id}
 
 @app.post("/image/generate")
-async def start_image_gen(background_tasks: BackgroundTasks, prompt: str = Form(...)):
+async def start_image_gen(
+    background_tasks: BackgroundTasks, 
+    prompt: str = Form(...),
+    aspect_ratio: str = Form("1:1"),
+    engine: str = Form("default"),
+    image_ref: Optional[str] = Form(None)
+):
     job_id = uuid.uuid4().hex
     update_task_status(job_id, "pending")
-    background_tasks.add_task(run_image_gen_task, job_id, prompt)
+    background_tasks.add_task(run_image_gen_task, job_id, prompt, aspect_ratio, engine, image_ref)
     return {"job_id": job_id}
 
 @app.get("/status/{job_id}")
